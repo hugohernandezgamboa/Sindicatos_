@@ -1,73 +1,89 @@
+# ──────────────────────────────────────────────────────────────
+# app.py  –  Explorador interactivo de sindicatos y patrones
+# Coloca este archivo en la misma carpeta que Sindicatos_limpio.xlsx
+# Requiere: streamlit, pandas, openpyxl  (listar en requirements.txt)
+# ──────────────────────────────────────────────────────────────
+
 import streamlit as st
 import pandas as pd
+import pathlib
 import io
 
-# ---------- Configuración inicial ----------
+# ─── Configuración general ───────────────────────────────────
 st.set_page_config(page_title="Explorador de Sindicatos", layout="wide")
 
-# ---------- Carga de datos ----------
+# Carpeta donde vive este script
+BASE_DIR = pathlib.Path(__file__).parent
+EXCEL_FILE = BASE_DIR / "Sindicatos_limpio.xlsx"      # nombre exacto del archivo
+
+# ─── Carga de datos (con caché) ───────────────────────────────
 @st.cache_data
-def load_data():
-    return pd.read_excel("C:/Users/h_maq/Downloads/Sindicatos_Only.xlsx")
+def load_data() -> pd.DataFrame:
+    """Lee el Excel con ruta relativa y normaliza SÍ/NO."""
+    df = pd.read_excel(EXCEL_FILE)
+
+    # Columnas que contienen SÍ / NO
+    bin_cols = ["NUEVOS REFORMA", "Legitimados", "REPOSITORIO"]
+    for col in bin_cols:
+        if col in df.columns:
+            df[col] = (df[col]
+                       .astype(str)
+                       .str.strip()
+                       .str.upper()
+                       .replace({"SI": "Sí", "NO": "No"}))
+    return df
 
 df = load_data()
 
-# ---------- Título ----------
-st.title("📊 Explorador interactivo de Sindicatos y Patrones")
-
-# ---------- Filtros (solo 3 variables) ----------
+# ─── Barra lateral de filtros ────────────────────────────────
 st.sidebar.header("🔍 Filtros")
+filter_cols = ["NUEVOS REFORMA", "Legitimados", "REPOSITORIO"]
+
 filtered_df = df.copy()
-
-filtro_columnas = ["NUEVOS REFORMA", "Legitimados", "REPOSITORIO"]
-
-for col in filtro_columnas:
+for col in filter_cols:
     if col in df.columns:
-        unique_vals = sorted(df[col].dropna().unique())
-        if len(unique_vals) > 1:
-            with st.sidebar.expander(f"Filtrar {col}", expanded=False):
-                sel = st.sidebar.multiselect(f"{col}:", unique_vals, default=unique_vals, key=col)
-                filtered_df = filtered_df[filtered_df[col].isin(sel)]
+        options = sorted(df[col].dropna().unique())
+        sel = st.sidebar.multiselect(col, options, default=options)
+        filtered_df = filtered_df[filtered_df[col].isin(sel)]
 
-# ---------- Métricas ----------
+# ─── Título y métrica ────────────────────────────────────────
+st.title("📊 Explorador interactivo de Sindicatos y Patrones")
 st.subheader("📄 Resultados filtrados")
-st.write(f"Total de registros: {len(filtered_df):,}")
+st.metric("Registros", f"{len(filtered_df):,}")
+
+# ─── Tabla de datos ──────────────────────────────────────────
 st.dataframe(filtered_df, use_container_width=True)
 
-# ---------- Gráficas de SI / NO por variable ----------
-st.subheader("📊 Distribución de SI / NO por variable")
+# ─── Gráficas de barras (Sí/No) ──────────────────────────────
+st.subheader("📊 Distribución Sí / No por variable")
+c1, c2, c3 = st.columns(3)
 
-col1, col2, col3 = st.columns(3)
+def bar_yes_no(df_: pd.DataFrame, col: str, container):
+    if col in df_.columns:
+        counts = df_[col].value_counts().reindex(["Sí", "No"]).fillna(0)
+        container.markdown(f"**{col}**")
+        container.bar_chart(counts)
 
-def graficar_estado(df_, columna, contenedor):
-    if columna in df_.columns:
-        conteo = (
-            df_[columna]
-            .str.upper()
-            .value_counts()
-            .rename_axis(columna)
-            .reset_index(name="Frecuencia")
-            .set_index(columna)
-        )
-        with contenedor:
-            st.markdown(f"**{columna}**")
-            st.bar_chart(conteo)
+bar_yes_no(filtered_df, "NUEVOS REFORMA", c1)
+bar_yes_no(filtered_df, "Legitimados", c2)
+bar_yes_no(filtered_df, "REPOSITORIO", c3)
 
-graficar_estado(filtered_df, "NUEVOS REFORMA", col1)
-graficar_estado(filtered_df, "Legitimados", col2)
-graficar_estado(filtered_df, "REPOSITORIO", col3)
-
-# ---------- Botón para descargar resultados ----------
-def to_excel(df_):
+# ─── Botón de descarga del Excel filtrado ─────────────────────
+def to_excel(dataframe: pd.DataFrame) -> bytes:
     buffer = io.BytesIO()
     with pd.ExcelWriter(buffer, engine="xlsxwriter") as writer:
-        df_.to_excel(writer, index=False, sheet_name="Filtrados")
+        dataframe.to_excel(writer, index=False, sheet_name="Filtrados")
     return buffer.getvalue()
 
 st.download_button(
-    "📥 Descargar Excel filtrado",
+    label="📥 Descargar Excel filtrado",
     data=to_excel(filtered_df),
     file_name="sindicatos_filtrados.xlsx",
     mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
 )
+
+# ──────────────────────────────────────────────────────────────
+# Fin del archivo
+# ──────────────────────────────────────────────────────────────
+
 
