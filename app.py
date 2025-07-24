@@ -71,7 +71,7 @@ bar_yes_no(filtered_df, "REPOSITORIO", c3)
 # ─── Botón de descarga del Excel filtrado ─────────────────────
 def to_excel(dataframe: pd.DataFrame) -> bytes:
     buffer = io.BytesIO()
-    with pd.ExcelWriter(buffer, engine="xlsxwriter") as writer:
+    with pd.ExcelWriter(buffer, engine="openpyxl") as writer:
         dataframe.to_excel(writer, index=False, sheet_name="Filtrados")
     return buffer.getvalue()
 
